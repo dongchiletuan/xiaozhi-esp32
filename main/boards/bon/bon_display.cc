@@ -164,11 +164,17 @@ void BonDisplay::TimerCb(lv_timer_t* t) {
 // Chay moi 100 ms trong luong cua LVGL (da giu khoa man hinh)
 void BonDisplay::Tick() {
     bool changed = false;
+    if (hold_ticks_ > 0 && --hold_ticks_ == 0) {   // het gio giu net mat -> ve cam xuc hien tai
+        emotion_ = pending_emotion_;
+        ShapeFor(emotion_);
+        changed = true;
+    }
     if (blinking_) {
         blinking_ = false;
         changed = true;
         blink_wait_ = Rand(25, 55);             // 2.5 - 5.5 giay nua chop tiep
         if (Rand(0, 5) == 0) blink_wait_ = 2;   // thinh thoang chop 2 lan lien
+        if (extra_blinks_ > 0) { extra_blinks_--; blink_wait_ = 2; }
     } else if (--blink_wait_ <= 0) {
         blinking_ = (emotion_ != "sleepy" || Rand(0, 1));
         changed = true;
@@ -192,6 +198,10 @@ bool BonDisplay::SetEmotion(const char* emotion) {
     bool ok = OledDisplay::SetEmotion(emotion);   // bieu tuong cu (dang bi mat che)
     if (face_ == nullptr || emotion == nullptr) return ok;
     DisplayLockGuard lock(this);
+    if (hold_ticks_ > 0) {          // dang lam net mat theo yeu cau: de danh, lat nua moi doi
+        pending_emotion_ = emotion;
+        return true;
+    }
     emotion_ = emotion;
     ShapeFor(emotion_);
     gaze_x_ = gaze_y_ = 0;
@@ -210,4 +220,30 @@ void BonDisplay::SetChatMessage(const char* role, const char* content) {
     } else {
         lv_obj_remove_flag(face_, LV_OBJ_FLAG_HIDDEN);
     }
+}
+
+bool BonDisplay::ShowExpression(const std::string& e, int ms) {
+    static const char* kNames[] = {
+        "neutral", "happy", "laughing", "loving", "sad", "crying", "angry", "surprised",
+        "shocked", "sleepy", "thinking", "confused", "winking", "cool", "embarrassed",
+        "silly", "blink"};
+    bool valid = false;
+    for (auto n : kNames) valid = valid || e == n;
+    if (!valid || face_ == nullptr) return false;
+
+    DisplayLockGuard lock(this);
+    lv_obj_remove_flag(face_, LV_OBJ_FLAG_HIDDEN);
+    if (hold_ticks_ == 0) pending_emotion_ = emotion_;   // nho cam xuc dang co de quay lai
+    gaze_x_ = gaze_y_ = 0;
+    if (e == "blink") {               // chop mat 3 cai lien
+        blinking_ = true;
+        extra_blinks_ = 2;
+        hold_ticks_ = 0;
+    } else {
+        emotion_ = e;
+        ShapeFor(emotion_);
+        hold_ticks_ = ms / 100 > 0 ? ms / 100 : 1;
+    }
+    Draw();
+    return true;
 }

@@ -20,6 +20,10 @@ public:
     bool SetEmotion(const char* emotion) override;
     void SetChatMessage(const char* role, const char* content) override;
 
+    // Lam mot net mat theo yeu cau (vd. "winking", "blink") trong ms mili giay.
+    // Trong luc do bo qua cam xuc server gui ve. Tra ve false neu ten khong hop le.
+    bool ShowExpression(const std::string& expression, int ms);
+
 private:
     // Hinh dang 1 con mat
     struct Eye {
@@ -48,6 +52,9 @@ private:
     int blink_wait_ = 30;      // so nhip 100 ms toi lan chop mat tiep theo
     int gaze_wait_ = 50;
     lv_timer_t* timer_ = nullptr;
+    int hold_ticks_ = 0;       // dang giu net mat theo yeu cau (so nhip 100 ms)
+    int extra_blinks_ = 0;     // so lan chop mat them (lenh "chop mat")
+    std::string pending_emotion_ = "neutral";
 
     void CreateEye(int i);
     void ShapeFor(const std::string& emotion);

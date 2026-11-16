@@ -10,6 +10,7 @@
 #include "button.h"
 #include "config.h"
 #include "led/single_led.h"
+#include "mcp_server.h"
 #include "bon_robot.h"
 #include "bon_display.h"
 
@@ -29,6 +30,7 @@ private:
     Button boot_button_;
     Button touch_button_;
     BonRobot* robot_ = nullptr;
+    BonDisplay* face_display_ = nullptr;   // null neu man hinh khong khoi dong duoc
 
     void InitializeI2c() {
         i2c_master_bus_config_t bus_config = {
@@ -81,8 +83,9 @@ private:
         ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel_, false));
         ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_, true));
 
-        display_ = new BonDisplay(panel_io_, panel_, DISPLAY_WIDTH, DISPLAY_HEIGHT,
-                                  DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y);
+        face_display_ = new BonDisplay(panel_io_, panel_, DISPLAY_WIDTH, DISPLAY_HEIGHT,
+                                       DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y);
+        display_ = face_display_;
     }
 
     void InitializeButtons() {
@@ -115,6 +118,32 @@ private:
         });
     }
 
+    // Lenh giong noi: "Bon nhay mat di", "Bon chop mat", "Bon lam mat buon"...
+    void InitializeFaceTool() {
+        McpServer::GetInstance().AddTool(
+            "self.bon.make_face",
+            "Make a facial expression with Bon's eyes on its screen. Use when the user asks Bon "
+            "to make a face, e.g. 'nhay mat' (winking), 'chop mat' (blink), 'cuoi' (happy), "
+            "'cuoi to' (laughing), 'lam mat buon' (sad), 'khoc' (crying), 'gian' (angry), "
+            "'ngac nhien' (surprised), 'hoang hot' (shocked), 'buon ngu' (sleepy), "
+            "'suy nghi' (thinking), 'ngau' (cool), 'ngai' (embarrassed), 'tinh nghich' (silly), "
+            "'yeu thuong' (loving).\n"
+            "expression: neutral | happy | laughing | loving | sad | crying | angry | surprised | "
+            "shocked | sleepy | thinking | confused | winking | cool | embarrassed | silly | blink\n"
+            "duration_ms: how long to hold the face (default 3000)",
+            PropertyList({
+                Property("expression", kPropertyTypeString),
+                Property("duration_ms", kPropertyTypeInteger, 3000, 500, 10000),
+            }),
+            [this](const PropertyList& p) -> ToolResult {
+                if (!face_display_ || !face_display_->ShowExpression(p["expression"].value<std::string>(),
+                                          p["duration_ms"].value<int>())) {
+                    return std::unexpected("Unknown expression or no screen");
+                }
+                return true;
+            });
+    }
+
 public:
     BonBoard() :
         boot_button_(BOOT_BUTTON_GPIO),
@@ -123,6 +152,7 @@ public:
         InitializeSsd1306Display();
         InitializeButtons();
         robot_ = new BonRobot(i2c_bus_);
+        InitializeFaceTool();
     }
 
     virtual Led* GetLed() override {
