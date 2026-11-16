@@ -11,6 +11,7 @@
 #include "config.h"
 #include "led/single_led.h"
 #include "bon_robot.h"
+#include "bon_display.h"
 
 #include <esp_log.h>
 #include <driver/i2c_master.h>
@@ -80,8 +81,8 @@ private:
         ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel_, false));
         ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_, true));
 
-        display_ = new OledDisplay(panel_io_, panel_, DISPLAY_WIDTH, DISPLAY_HEIGHT,
-                                   DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y);
+        display_ = new BonDisplay(panel_io_, panel_, DISPLAY_WIDTH, DISPLAY_HEIGHT,
+                                  DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y);
     }
 
     void InitializeButtons() {
