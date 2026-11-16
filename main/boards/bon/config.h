@@ -40,7 +40,7 @@
 
 // Neu Bon noi "di toi" ma banh nao quay nguoc, doi false -> true cho banh do
 #define MOTOR_LEFT_REVERSED   false
-#define MOTOR_RIGHT_REVERSED  false
+#define MOTOR_RIGHT_REVERSED  true    // anh Tuan test 16/11: banh phai quay nguoc
 
 // Toc do mac dinh (%). Dang dung nguon USB nen de vua phai.
 #define MOTOR_DEFAULT_SPEED   60
