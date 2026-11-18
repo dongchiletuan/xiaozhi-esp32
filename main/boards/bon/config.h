@@ -45,11 +45,15 @@
 // Toc do mac dinh (%). Dang dung nguon USB nen de vua phai.
 #define MOTOR_DEFAULT_SPEED   60
 
+// Xoay tai cho: anh Tuan do 18/11 (da lap banh, nguon USB): toc do 60% -> 5 giay = 90 do
+#define TURN_MS_PER_360_AT_60  20000
+#define TURN_SPEED             85    // xoay nhanh hon chut cho do lau (thoi gian tu tinh lai)
+
 // Cam bien ToF goc 45 do duoi mui: mat ban ~22-25 mm
 #define TOF_DEFAULT_BASELINE_MM  23   // dung khi luc khoi dong khong do duoc mat ban
 #define TOF_EDGE_MARGIN_MM       15   // xa hon mat ban > 15 mm -> mep ban
 #define TOF_OBSTACLE_MARGIN_MM   5    // gan hon mat ban > 5 mm -> vat can thap
 #define TOF_MAX_FLOOR_MM         150  // mat ban xa hon muc nay coi nhu khong thay
-// Nguong thuc te tu dong tang theo do cao: mep = xa hon 35%, vat can = gan hon 20%
+// Nguong thuc te tu dong tang theo do cao: mep = xa hon 35%, vat can = gan hon 30%
 
 #endif // _BOARD_CONFIG_H_

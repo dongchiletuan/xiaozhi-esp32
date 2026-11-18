@@ -156,7 +156,7 @@ bool BonRobot::IsEdge(int mm) const {
 
 bool BonRobot::IsObstacle(int mm) const {
     int b = baseline_mm_.load();
-    int margin = std::max(TOF_OBSTACLE_MARGIN_MM, b * 20 / 100);
+    int margin = std::max(TOF_OBSTACLE_MARGIN_MM, b * 30 / 100);
     return mm >= 0 && mm < b - margin;
 }
 
@@ -310,7 +310,7 @@ void BonRobot::RegisterTools() {
         "self.bon.move",
         "Make Bon (the robot) drive on the table. Use when the user says things like "
         "'Bon di toi / tien len' (forward), 'lui lai' (backward), 're trai / quay trai' (left), "
-        "'re phai / quay phai' (right). Left/right spin in place; about 600 ms is a quarter turn. "
+        "'re phai / quay phai' (right). For turning by an angle (quay 90 do, quay mot vong) use self.bon.turn instead. "
         "Bon automatically stops at table edges and low obstacles. The call returns at once "
         "while Bon is still moving.\n"
         "direction: forward | backward | left | right\n"
@@ -354,6 +354,35 @@ void BonRobot::RegisterTools() {
                    "\", \"duration_ms\": " + std::to_string(ms) + "}";
         });
 
+    mcp.AddTool(
+        "self.bon.turn",
+        "Turn Bon in place by an angle. Use for 'Bon quay trai 90 do', 'quay phai', "
+        "'quay mot vong' (360), 'quay lai phia sau' (180). Bon turns slowly, a full circle "
+        "takes about 15 seconds, so tell the user to wait. Returns at once.\n"
+        "direction: left | right\n"
+        "degrees: angle to turn, default 90",
+        PropertyList({
+            Property("direction", kPropertyTypeString),
+            Property("degrees", kPropertyTypeInteger, 90, 10, 720),
+        }),
+        [this](const PropertyList& p) -> ToolResult {
+            std::string d = p["direction"].value<std::string>();
+            int deg = p["degrees"].value<int>();
+            Dir dir;
+            if (d == "left") dir = kLeft;
+            else if (d == "right") dir = kRight;
+            else return std::unexpected("direction must be left or right");
+            if (!tof_ok_ || !floor_found_.load()) {
+                return std::unexpected("Bon's distance sensor cannot see the table, so Bon "
+                                       "must not turn.");
+            }
+            // Thoi gian = goc x (thoi gian 1 vong o 60%) x (60 / toc do xoay)
+            int ms = (int)((int64_t)deg * TURN_MS_PER_360_AT_60 * 60 / (360 * TURN_SPEED));
+            SetPlan({{dir, TURN_SPEED, ms}});
+            return std::string("{\"started\": true, \"degrees\": ") + std::to_string(deg) +
+                   ", \"seconds\": " + std::to_string((ms + 500) / 1000) + "}";
+        });
+
     mcp.AddTool("self.bon.stop", "Stop Bon immediately ('Bon dung lai', 'dung').", PropertyList(),
                 [this](const PropertyList&) -> ToolResult {
                     Stop();
@@ -363,15 +392,15 @@ void BonRobot::RegisterTools() {
     mcp.AddTool(
         "self.bon.dance",
         "Make Bon do a happy little dance by wiggling left and right on the spot "
-        "('Bon nhay di', 'Bon mua di'). Takes about 4 seconds.",
+        "('Bon nhay di', 'Bon mua di'). Takes about 6 seconds.",
         PropertyList(), [this](const PropertyList&) -> ToolResult {
             if (!tof_ok_) {
                 return std::unexpected("Distance sensor not working; Bon cannot dance safely.");
             }
-            int s = MOTOR_DEFAULT_SPEED;
-            SetPlan({{kLeft, s, 250},  {kRight, s, 250}, {kLeft, s, 250},  {kRight, s, 250},
-                     {kBackward, s, 300}, {kLeft, s + 10, 900}, {kRight, s, 250},
-                     {kLeft, s, 250},  {kRight, s, 250}});
+            int s = TURN_SPEED;
+            SetPlan({{kLeft, s, 600},  {kRight, s, 600}, {kLeft, s, 600},  {kRight, s, 600},
+                     {kForward, MOTOR_DEFAULT_SPEED, 400}, {kBackward, MOTOR_DEFAULT_SPEED, 400},
+                     {kLeft, s, 1500}, {kRight, s, 600}, {kLeft, s, 600}});
             return true;
         });
 
