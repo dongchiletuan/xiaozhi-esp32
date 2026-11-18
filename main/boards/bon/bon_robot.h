@@ -38,6 +38,7 @@ private:
     std::atomic<int> tof_mm_{-1};       // -1 = khong co vat (qua xa)
     std::atomic<int> baseline_mm_{23};  // khoang cach toi mat ban luc dung yen
     std::atomic<bool> moving_{false};
+    std::atomic<bool> floor_found_{false};  // luc khoi dong co nhin thay mat ban khong
     std::string last_event_ = "none";   // none / edge / obstacle / tof_error
 
     SemaphoreHandle_t mutex_;

@@ -131,26 +131,33 @@ void BonRobot::CalibrateFloor() {
     std::vector<int> ok;
     for (int i = 0; i < 9; i++) {
         int mm = ReadTof();
-        if (mm >= 8 && mm <= 45) ok.push_back(mm);
+        if (mm >= 8 && mm <= TOF_MAX_FLOOR_MM) ok.push_back(mm);
         vTaskDelay(pdMS_TO_TICKS(20));
     }
     if (ok.size() >= 5) {
         std::sort(ok.begin(), ok.end());
         baseline_mm_ = ok[ok.size() / 2];
+        floor_found_ = true;
         ESP_LOGI(TAG, "Mat ban o %d mm", baseline_mm_.load());
     } else {
         baseline_mm_ = TOF_DEFAULT_BASELINE_MM;
+        floor_found_ = false;
         ESP_LOGW(TAG, "Khong do duoc mat ban, dung mac dinh %d mm", TOF_DEFAULT_BASELINE_MM);
     }
 }
 
 bool BonRobot::IsEdge(int mm) const {
     // Qua xa (khong thay gi) hoac xa hon mat ban nhieu -> phia truoc la khoang trong
-    return mm == -1 || mm > baseline_mm_.load() + TOF_EDGE_MARGIN_MM;
+    // Nguong ti le voi do cao: cam bien cang cao thi so do dao dong cang nhieu
+    int b = baseline_mm_.load();
+    int margin = std::max(TOF_EDGE_MARGIN_MM, b * 35 / 100);
+    return mm == -1 || mm > b + margin;
 }
 
 bool BonRobot::IsObstacle(int mm) const {
-    return mm >= 0 && mm < baseline_mm_.load() - TOF_OBSTACLE_MARGIN_MM;
+    int b = baseline_mm_.load();
+    int margin = std::max(TOF_OBSTACLE_MARGIN_MM, b * 20 / 100);
+    return mm >= 0 && mm < b - margin;
 }
 
 // ---------------- Vong lap chinh cua Bon ----------------
@@ -288,6 +295,8 @@ std::string BonRobot::StatusJson() {
     s += tof_ok_ ? "true" : "false";
     s += ", \"distance_mm\": " + std::to_string(mm);
     s += ", \"floor_mm\": " + std::to_string(baseline_mm_.load());
+    s += ", \"floor_found\": ";
+    s += floor_found_.load() ? "true" : "false";
     s += ", \"at_edge\": ";
     s += (tof_ok_ && IsEdge(mm)) ? "true" : "false";
     s += ", \"last_event\": \"" + ev + "\"}";
@@ -327,9 +336,17 @@ void BonRobot::RegisterTools() {
                 return std::unexpected("Bon's distance sensor is not working, so Bon must not "
                                        "drive forward or turn (it could fall off the table).");
             }
+            if (dir != kBackward && !floor_found_.load()) {
+                return std::unexpected("Bon could not see the table surface when it started "
+                                       "(sensor reading " + std::to_string(tof_mm_.load()) +
+                                       " mm). Ask the user to put Bon flat on the table and say "
+                                       "'Bon do lai mat ban' (calibrate_floor).");
+            }
             if (dir == kForward && IsEdge(tof_mm_.load())) {
-                return std::unexpected("Bon is at the table edge right now. Move backward or "
-                                       "turn first.");
+                return std::unexpected("Bon is at the table edge right now (sensor " +
+                                       std::to_string(tof_mm_.load()) + " mm, table " +
+                                       std::to_string(baseline_mm_.load()) +
+                                       " mm). Move backward or turn first.");
             }
             if (dir == kBackward) ms = std::min(ms, kMaxBackwardMs);
             SetPlan({{dir, speed, ms}});
@@ -373,6 +390,12 @@ void BonRobot::RegisterTools() {
             if (moving_.load()) return std::unexpected("Stop Bon first.");
             if (!tof_ok_) return std::unexpected("Distance sensor not working.");
             CalibrateFloor();
+            if (!floor_found_.load()) {
+                return std::unexpected("Could not see the table surface (sensor reading " +
+                                       std::to_string(tof_mm_.load()) +
+                                       " mm). The sensor may be too high or not pointing at "
+                                       "the table.");
+            }
             return std::string("{\"floor_mm\": ") + std::to_string(baseline_mm_.load()) + "}";
         });
 }

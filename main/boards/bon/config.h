@@ -49,5 +49,7 @@
 #define TOF_DEFAULT_BASELINE_MM  23   // dung khi luc khoi dong khong do duoc mat ban
 #define TOF_EDGE_MARGIN_MM       15   // xa hon mat ban > 15 mm -> mep ban
 #define TOF_OBSTACLE_MARGIN_MM   5    // gan hon mat ban > 5 mm -> vat can thap
+#define TOF_MAX_FLOOR_MM         150  // mat ban xa hon muc nay coi nhu khong thay
+// Nguong thuc te tu dong tang theo do cao: mep = xa hon 35%, vat can = gan hon 20%
 
 #endif // _BOARD_CONFIG_H_
