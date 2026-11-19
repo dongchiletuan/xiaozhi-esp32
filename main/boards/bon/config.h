@@ -45,9 +45,10 @@
 // Toc do mac dinh (%). Dang dung nguon USB nen de vua phai.
 #define MOTOR_DEFAULT_SPEED   60
 
-// Xoay tai cho: anh Tuan do 18/11 (da lap banh, nguon USB): toc do 60% -> 5 giay = 90 do
-#define TURN_MS_PER_360_AT_60  20000
-#define TURN_SPEED             85    // xoay nhanh hon chut cho do lau (thoi gian tu tinh lai)
+// Xoay tai cho: anh Tuan do 19/11 chay PIN: toc do 85% -> 14 giay = 4,75 vong
+// => 1 vong ~ 2950 ms o toc do 85%
+#define TURN_SPEED             85
+#define TURN_MS_PER_360        2950   // thoi gian xoay 1 vong o TURN_SPEED
 
 // Cam bien ToF goc 45 do duoi mui: mat ban ~22-25 mm
 #define TOF_DEFAULT_BASELINE_MM  23   // dung khi luc khoi dong khong do duoc mat ban

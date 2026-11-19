@@ -357,8 +357,8 @@ void BonRobot::RegisterTools() {
     mcp.AddTool(
         "self.bon.turn",
         "Turn Bon in place by an angle. Use for 'Bon quay trai 90 do', 'quay phai', "
-        "'quay mot vong' (360), 'quay lai phia sau' (180). Bon turns slowly, a full circle "
-        "takes about 15 seconds, so tell the user to wait. Returns at once.\n"
+        "'quay mot vong' (360), 'quay lai phia sau' (180). A full circle takes about 3 "
+        "seconds. Returns at once.\n"
         "direction: left | right\n"
         "degrees: angle to turn, default 90",
         PropertyList({
@@ -376,8 +376,7 @@ void BonRobot::RegisterTools() {
                 return std::unexpected("Bon's distance sensor cannot see the table, so Bon "
                                        "must not turn.");
             }
-            // Thoi gian = goc x (thoi gian 1 vong o 60%) x (60 / toc do xoay)
-            int ms = (int)((int64_t)deg * TURN_MS_PER_360_AT_60 * 60 / (360 * TURN_SPEED));
+            int ms = deg * TURN_MS_PER_360 / 360;
             SetPlan({{dir, TURN_SPEED, ms}});
             return std::string("{\"started\": true, \"degrees\": ") + std::to_string(deg) +
                    ", \"seconds\": " + std::to_string((ms + 500) / 1000) + "}";
