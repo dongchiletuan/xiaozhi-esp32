@@ -8,6 +8,7 @@
 #include "bon_robot.h"
 
 #include <ctype.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -463,7 +464,8 @@ static void calibrate_floor(void) {
     }
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     if (n >= 5) {
-        std::sort(ok, ok + n);
+        for (int i = 1; i < n; i++)          // sap xep chen (it phan tu)
+            for (int j = i; j > 0 && ok[j - 1] > ok[j]; j--) std::swap(ok[j - 1], ok[j]);
         s_floor_mm = ok[n / 2];
         s_floor_found = true;
     } else {
@@ -544,8 +546,7 @@ static void bon_task(void *) {
         }
         if (s_req_text_changed) {
             s_req_text_changed = false;
-            strncpy(text, s_req_text, sizeof(text) - 1);
-            text[sizeof(text) - 1] = '\0';
+            snprintf(text, sizeof(text), "%s", s_req_text);
             text_until = s_req_text_until;
             dirty = true;
         }
@@ -912,8 +913,7 @@ extern "C" cJSON *bon_robot_command(const char *command, cJSON *params) {
         if (!t || !*t) return err("missing_param", "text is required");
         int secs = get_int(params, "seconds", 8, 1, 60);
         xSemaphoreTake(s_mutex, portMAX_DELAY);
-        strncpy(s_req_text, t, sizeof(s_req_text) - 1);
-        s_req_text[sizeof(s_req_text) - 1] = '\0';
+        snprintf(s_req_text, sizeof(s_req_text), "%s", t);
         s_req_text_until = now_ms() + secs * 1000LL;
         s_req_text_changed = true;
         xSemaphoreGive(s_mutex);
