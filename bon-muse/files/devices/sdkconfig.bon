@@ -1,0 +1,8 @@
+# Robot Bon: ESP32-S3 N16R8 clone, loaded after sdkconfig.espressif-s3-devkitc-1.
+# OLED SSD1306 + ToF VL6180X on I2C SDA 41 / SCL 42, motors on GPIO10-13
+# (TC1508A), TTP223 touch on GPIO17. The onboard RGB LED is on GPIO48.
+CONFIG_MUSE_DEVICE_MODEL_ID="muse-gadget-bon"
+CONFIG_MUSE_DEVICE_MODEL_NAME="Robot Bon (ESP32-S3)"
+CONFIG_MUSE_DEVICE_GUIDE="devices/guides/bon.md"
+CONFIG_HOMEHUB_LED_STRIP_GPIO=48
+CONFIG_MUSE_BON_ROBOT=y

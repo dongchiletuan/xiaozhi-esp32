@@ -1,0 +1,16 @@
+NAP FIRMWARE MUSE CHO ROBOT BON (giu nguyen Wi-Fi, token va ghep doi)
+
+Mo https://espressif.github.io/esptool-js/ bang Chrome, Baudrate 921600,
+bam Connect, chon cong COM cua Bon. Them 4 dong (Add File) dung dia chi:
+
+  0x0      1-bootloader-0x0.bin
+  0x10000  2-partition-table-0x10000.bin
+  0x17000  3-ota-data-0x17000.bin
+  0x20000  4-bon-app-0x20000.bin
+
+KHONG bam "Erase Flash". Bam Program. Xong rut dien cam lai.
+Dat Bon nam phang tren ban luc bat (Bon do mat ban luc khoi dong).
+
+Neu Bon khong ket noi lai duoc Muse: nap file merged-binary-XOA-HET-0x0.bin
+o dia chi 0x0 (xoa het), roi vao trang web flasher cua Muse de gui lai
+SDK token va ghep doi lai trong app Muse.
