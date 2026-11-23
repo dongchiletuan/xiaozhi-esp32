@@ -1,0 +1,78 @@
+name: Build Bon Muse firmware
+
+on:
+  push:
+    branches: ["claude/**", "bon-muse/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Ban Muse Gadgets SDK duoc ghim co dinh (22/11/2026)
+  MUSE_SDK_REF: e17081a45941415d483642dbe21c2a2e6ef85a13
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Check out Muse Gadgets SDK
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: facebookincubator/muse-gadget-sdk
+          ref: ${{ env.MUSE_SDK_REF }}
+          path: sdk
+          persist-credentials: false
+
+      - name: Free disk space
+        run: sudo rm -rf /usr/local/lib/android
+
+      - name: Add Bon to the SDK
+        run: python3 bon-muse/apply_bon.py sdk/esp32
+
+      - name: Build
+        uses: espressif/esp-idf-ci-action@9d38657f3d789ca759b2b37aaf5ceffbc42c4f0d # v1
+        with:
+          esp_idf_version: v6.0.3
+          target: esp32s3
+          path: sdk/esp32
+          command: |
+            set -e
+            . "$IDF_PATH/export.sh" > /dev/null
+            idf.py -B build -DIDF_TARGET=esp32s3 -DSDKCONFIG=build/sdkconfig \
+              -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;devices/sdkconfig.espressif-s3-devkitc-1;devices/sdkconfig.bon" build
+            idf.py -B build -DSDKCONFIG=build/sdkconfig merge-bin -o merged-binary.bin
+
+      - name: Package
+        run: |
+          set -e
+          B=sdk/esp32/build
+          O=out
+          mkdir -p $O
+          grep -q "CONFIG_MUSE_BON_ROBOT=y" $B/sdkconfig
+          cat $B/flash_args
+          grep -q "^0x0 bootloader/bootloader.bin" $B/flash_args
+          grep -q "^0x10000 partition_table/partition-table.bin" $B/flash_args
+          grep -q "^0x17000 ota_data_initial.bin" $B/flash_args
+          grep -q "^0x20000 muse-gadget.bin" $B/flash_args
+          cp $B/bootloader/bootloader.bin            $O/1-bootloader-0x0.bin
+          cp $B/partition_table/partition-table.bin  $O/2-partition-table-0x10000.bin
+          cp $B/ota_data_initial.bin                 $O/3-ota-data-0x17000.bin
+          cp $B/muse-gadget.bin                      $O/4-bon-app-0x20000.bin
+          cp $B/merged-binary.bin                    $O/merged-binary-XOA-HET-0x0.bin
+          cp $B/flash_args                           $O/flash_args.txt
+          cp bon-muse/HUONG-DAN-NAP.txt              $O/
+          ls -la $O
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bon-muse-${{ github.sha }}
+          path: out/
+          if-no-files-found: error
+          retention-days: 30

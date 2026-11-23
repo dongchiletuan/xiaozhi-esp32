@@ -1,0 +1,3 @@
+Sua file nay de kich hoat build lai firmware Bon Muse.
+lan 1
+lan 2
