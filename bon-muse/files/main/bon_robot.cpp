@@ -28,7 +28,14 @@
 #include "freertos/task.h"
 extern "C" {
 #include "pixel_font.h"
+#include "config_store.h"
+#if CONFIG_HOMEHUB_VOICE
+#include "button.h"
+#endif
 }
+#if CONFIG_HOMEHUB_VOICE
+#include "bon_tts.h"
+#endif
 
 static const char *TAG = "bon";
 
@@ -102,6 +109,7 @@ static int s_floor_mm = TOF_DEFAULT_FLOOR;
 static const char *s_last_event = "none";
 static bool s_oled_ok;
 static int s_touch_count;
+static bool s_listening;            // chi task chinh dung
 static int64_t s_last_touch_ms;
 static SemaphoreHandle_t s_calibrate_done;
 
@@ -564,18 +572,32 @@ static void bon_task(void *) {
         }
 
         // 2. Cam bien cham: cham vao -> dung lai, cuoi
+        //    Co giong noi: giu tay tren dau = noi voi Muse, tha tay = gui
         bool touch = gpio_get_level(BON_TOUCH_GPIO) == 1;
         if (touch && !touch_prev) {
             if (active) finish(nullptr, FACE_NEUTRAL);
-            face = FACE_HAPPY;
-            face_until = now + 2500;
+            bool listening = false;
+#if CONFIG_HOMEHUB_VOICE
+            listening = button_inject_press(true);
+#endif
+            face = listening ? FACE_SURPRISED : FACE_HAPPY;   // mat tron = dang nghe
+            face_until = listening ? 0 : now + 2500;
             text_until = 0;
             dirty = true;
+            s_listening = listening;
             xSemaphoreTake(s_mutex, portMAX_DELAY);
             s_touch_count++;
             s_last_touch_ms = now;
             s_moving = false;
             xSemaphoreGive(s_mutex);
+        } else if (!touch && touch_prev && s_listening) {
+#if CONFIG_HOMEHUB_VOICE
+            button_inject_press(false);
+#endif
+            s_listening = false;
+            face = FACE_CONFUSED;          // dang nghi...
+            face_until = now + 8000;
+            dirty = true;
         }
         touch_prev = touch;
 
@@ -695,6 +717,14 @@ extern "C" void bon_robot_init(void) {
         draw_face(FACE_HAPPY, false, 0, 0);
         oled_flush();
     }
+#if CONFIG_HOMEHUB_VOICE
+    // Key Google TTS nap qua cong serial (>tts_key=...), luu trong NVS cua Bon
+    char key[64] = "", voice[40] = "";
+    config_get_str("tts_key", key, sizeof(key));
+    config_get_str("tts_voice", voice, sizeof(voice));
+    bon_tts_set_key(key, voice);
+    memset(key, 0, sizeof(key));
+#endif
     s_started = true;
     xTaskCreate(bon_task, "bon", 6144, NULL, 4, &s_task);
 }
@@ -762,6 +792,16 @@ extern "C" void bon_robot_advertise(cJSON *commands) {
             "Re-measure the table under Bon's nose. Use after Bon is moved to a new table or "
             "when it refuses to move because it can't see the table.",
             nullptr, nullptr);
+}
+
+extern "C" void bon_robot_show_reply(const char *text) {
+    if (!s_started || !text || !*text) return;
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    snprintf(s_req_text, sizeof(s_req_text), "%s", text);
+    s_req_text_until = now_ms() + 12000;
+    s_req_text_changed = true;
+    xSemaphoreGive(s_mutex);
+    if (s_task) xTaskNotifyGive(s_task);
 }
 
 extern "C" bool bon_robot_handles(const char *command) {

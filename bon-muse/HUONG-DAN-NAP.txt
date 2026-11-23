@@ -14,3 +14,13 @@ Dat Bon nam phang tren ban luc bat (Bon do mat ban luc khoi dong).
 Neu Bon khong ket noi lai duoc Muse: nap file merged-binary-XOA-HET-0x0.bin
 o dia chi 0x0 (xoa het), roi vao trang web flasher cua Muse de gui lai
 SDK token va ghep doi lai trong app Muse.
+
+NAP KEY GOOGLE TTS (chi lam 1 lan, key luu trong Bon)
+Mo https://googlechromelabs.github.io/serial-terminal/ bang Chrome,
+Connect cong COM cua Bon, baud 115200. Go dung 1 dong roi Enter:
+
+  >tts_key=AIza...........
+
+(dau ">" o dau, khong co dau cach). Bon tra loi "@tts_key ok" va tu khoi
+dong lai. Khong quay phim/chup man hinh luc go key.
+Doi giong (tuy chon): >tts_voice=vi-VN-Neural2-D

@@ -16,6 +16,9 @@ void bon_robot_init(void);
 // Them cac lenh bon.* vao link.register.
 void bon_robot_advertise(cJSON *commands);
 
+// Hien cau tra loi cua Muse len man OLED (goi tu task giong noi).
+void bon_robot_show_reply(const char *text);
+
 // true neu command la mot lenh bon.*
 bool bon_robot_handles(const char *command);
 

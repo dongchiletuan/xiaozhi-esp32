@@ -76,6 +76,124 @@ def main():
     insert(app, "#if CONFIG_HOMEHUB_VOICE\n    voice_init();\n#endif\n",
            "#if CONFIG_MUSE_BON_ROBOT\n    bon_robot_init();\n#endif\n",
            before=True)
+
+    # ---- Giong noi: mic INMP441 + loa MAX98357A, cham dau de noi ----
+    insert(main_dir / "Kconfig.projbuild",
+           "        config HOMEHUB_VOICE_BOARD_WAVESHARE_154G\n"
+           "            bool \"Waveshare ESP32-S3-ePaper-1.54G\"\n"
+           "            depends on IDF_TARGET_ESP32S3\n",
+           "\n        config HOMEHUB_VOICE_BOARD_BON\n"
+           "            bool \"Robot Bon (INMP441 mic + MAX98357A amp)\"\n"
+           "            depends on IDF_TARGET_ESP32S3\n")
+    sel = main_dir / "voice_board_select.cmake"
+    insert(sel, "    WAVESHARE_154G\n)", "    BON\n", before=True)
+    insert(sel, "else()\n    message(FATAL_ERROR \"HOMEHUB_VOICE_BOARD_${HOMEHUB_VOICE_BOARD_SELECTED} has no driver source\")",
+           "elseif(HOMEHUB_VOICE_BOARD_SELECTED STREQUAL \"BON\")\n"
+           "    set(HOMEHUB_VOICE_BOARD_SOURCE \"voice_board_bon.c\")\n",
+           before=True)
+    # Cam bien cham cua Bon dong vai nut "giu de noi"
+    btn = main_dir / "button.c"
+    s = btn.read_text()
+    if "button_inject_press" not in s:
+        s += ("\n// Robot Bon: the touch sensor acts as the push-to-talk button.\n"
+              "bool button_inject_press(bool pressed) {\n"
+              "    button_press_cb cb = s_press_cb;\n"
+              "    return cb && cb(pressed);\n"
+              "}\n")
+        btn.write_text(s)
+    insert(main_dir / "button.h", "void button_set_press_cb(button_press_cb cb);\n",
+           "// Robot Bon: feed a press or release from another input (the touch sensor).\n"
+           "bool button_inject_press(bool pressed);\n")
+    # Cau tra loi cua Muse hien len man OLED
+    voice = main_dir / "voice.c"
+    insert(voice, '#include "voice_player.h"\n',
+           '#if CONFIG_MUSE_BON_ROBOT\n#include "bon_robot.h"\n#endif\n')
+    insert(voice, "            case MUSE_HATCH_EV_REPLY:\n",
+           "#if CONFIG_MUSE_BON_ROBOT\n"
+           "                bon_robot_show_reply(text);\n"
+           "#endif\n")
+
+    # ---- Google Cloud TTS: Bon doc cau tra loi ----
+    muse_dir = esp32 / "components" / "muse"
+    insert(muse_dir / "CMakeLists.txt",
+           "    list(APPEND srcs \"muse_options.c\" \"muse_options_json.c\")\n"
+           "    list(APPEND embed \"test_reply.mp3\")\n",
+           "    if(CONFIG_MUSE_BON_ROBOT)\n"
+           "        list(APPEND srcs \"bon_tts.c\")\n"
+           "    endif()\n")
+    sess = muse_dir / "muse_chat_session.cpp"
+    insert(sess, '#include "muse_options.h"\n',
+           '#if CONFIG_MUSE_BON_ROBOT\n#include "bon_tts.h"\n#endif\n')
+    insert(sess,
+           "        m.pcm_start = s_turn.pcm_out;\n"
+           "        /* Paced to the text kept:",
+           "#if CONFIG_MUSE_BON_ROBOT\n"
+           "        if (bon_tts_enabled() && s_turn.texts && s_turn.mp3 &&\n"
+           "            bon_tts_start(s_turn.texts + i * TEXT_MAX)) {\n"
+           "            m.tts = TTS_ACTIVE;\n"
+           "            s_turn.tts_msg = i;\n"
+           "            s_turn.silent = false;\n"
+           "            m.pcm_start = s_turn.pcm_out;\n"
+           "            m.pcm_frames = 0;\n"
+           "            s_turn.mp3_len = 0;\n"
+           "            s_turn.mp3_ended = false;\n"
+           "            s_turn.kbps = 0;\n"
+           "            s_turn.down_rate = 0;\n"
+           "            mp3dec_init(&s_turn.dec);\n"
+           "            ESP_LOGI(TAG, \"speaking message %s with Google TTS\", m.id);\n"
+           "            show_reply_start(m);\n"
+           "            return;\n"
+           "        }\n"
+           "#endif\n",
+           before=True)
+    insert(sess, "/* Speaker off: queues the shown message's silence",
+           "#if CONFIG_MUSE_BON_ROBOT\n"
+           "/* Robot Bon: moves the Google TTS MP3 into the decode buffer as room allows. */\n"
+           "static void bon_tts_feed(void)\n"
+           "{\n"
+           "    if (s_turn.tts_msg < 0 || s_turn.silent || s_turn.mp3_ended) {\n"
+           "        return;\n"
+           "    }\n"
+           "    int st = bon_tts_state();\n"
+           "    if (st < 0) {\n"
+           "        ESP_LOGW(TAG, \"Google TTS failed; reply stays as text\");\n"
+           "        s_turn.msgs[s_turn.tts_msg].tts = TTS_FINISHED;\n"
+           "        s_turn.tts_msg = -1;\n"
+           "        return;\n"
+           "    }\n"
+           "    if (st == 0) {\n"
+           "        return;\n"
+           "    }\n"
+           "    s_turn.mp3_len += bon_tts_take(s_turn.mp3 + s_turn.mp3_len, MP3_BUF - s_turn.mp3_len);\n"
+           "    if (!bon_tts_remaining()) {\n"
+           "        s_turn.mp3_ended = true;\n"
+           "    }\n"
+           "}\n"
+           "#endif\n\n",
+           before=True)
+    insert(sess, "            start_tts();\n            decode();\n",
+           "#if CONFIG_MUSE_BON_ROBOT\n            bon_tts_feed();\n#endif\n",
+           before=True)
+    # Nap key qua cong serial:  >tts_key=AIza...   (tuy chon >tts_voice=vi-VN-Neural2-D)
+    con = main_dir / "sdk_token_console.c"
+    insert(con, '#include "sdkconfig.h"\n',
+           '#if CONFIG_MUSE_BON_ROBOT\n#include "config_store.h"\n#endif\n')
+    insert(con, "    if (strncmp(line, COMMAND, strlen(COMMAND)) != 0) return false;\n",
+           "#if CONFIG_MUSE_BON_ROBOT\n"
+           "    if (strncmp(line, \"tts_key=\", 8) == 0 || strncmp(line, \"tts_voice=\", 10) == 0) {\n"
+           "        bool key = line[4] == 'k';\n"
+           "        const char *v = strchr(line, '=') + 1;\n"
+           "        bool ok = config_set_str(key ? \"tts_key\" : \"tts_voice\", v);\n"
+           "        printf(\"@%s %s\\n\", key ? \"tts_key\" : \"tts_voice\", ok ? \"ok\" : \"error storage\");\n"
+           "        fflush(stdout);\n"
+           "        if (ok) {\n"
+           "            vTaskDelay(pdMS_TO_TICKS(500));\n"
+           "            esp_restart();\n"
+           "        }\n"
+           "        return true;\n"
+           "    }\n"
+           "#endif\n",
+           before=True)
     print("Bon added to", esp32)
 
 

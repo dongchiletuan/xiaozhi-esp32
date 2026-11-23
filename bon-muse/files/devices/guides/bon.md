@@ -28,5 +28,10 @@ Bon drives on a table. Never drive more than 3 seconds at a time, check
 `bon.status` after moving, and stop if the user asks. Bon has no sensor at
 the back, so keep backward moves short. Touching Bon's head also stops it.
 
-Bon has no speaker or microphone in this firmware: everything goes through
-the Muse chat.
+## Talking with Bon
+
+Children hold a hand on Bon's head, speak, then let go: that sends you a
+voice note. Bon reads your reply aloud in Vietnamese and shows it on its
+screen. Keep spoken replies short (one to three sentences), simple and
+warm, without lists, links, markdown or emoji, because they are read out
+by a voice for a young child.
