@@ -3,6 +3,7 @@ name: Build Bon Muse firmware
 on:
   push:
     branches: ["claude/**", "bon-muse/**"]
+  pull_request:
   workflow_dispatch:
 
 permissions:
