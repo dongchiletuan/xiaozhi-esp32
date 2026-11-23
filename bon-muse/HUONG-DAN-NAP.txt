@@ -16,11 +16,15 @@ o dia chi 0x0 (xoa het), roi vao trang web flasher cua Muse de gui lai
 SDK token va ghep doi lai trong app Muse.
 
 NAP KEY GOOGLE TTS (chi lam 1 lan, key luu trong Bon)
-Mo https://googlechromelabs.github.io/serial-terminal/ bang Chrome,
-Connect cong COM cua Bon, baud 115200. Go dung 1 dong roi Enter:
+Arduino IDE > Tools > Serial Monitor, chon cong COM cua Bon, 115200 baud.
+Tat Unikey (chuyen sang E). Dan 1 dong vao o go roi Enter:
 
   >tts_key=AIza...........
 
-(dau ">" o dau, khong co dau cach). Bon tra loi "@tts_key ok" va tu khoi
-dong lai. Khong quay phim/chup man hinh luc go key.
+Moi dong anh go, Bon deu tra loi 1 dong bat dau bang "@":
+  "@tts_key ok (39 ky tu)"  -> xong, Bon tu khoi dong lai.
+  "@tts_key error ..."      -> key bi thieu/thua ky tu, dan lai.
+  "@bon nhan duoc 1 dong"   -> Bon nghe thay nhung dong khong dung lenh.
+  Khong thay gi            -> sai cong COM, hoac chua bam Enter.
+Khong quay phim/chup man hinh luc go key.
 Doi giong (tuy chon): >tts_voice=vi-VN-Neural2-D

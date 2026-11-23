@@ -199,7 +199,7 @@ static void tts_task(void *arg) {
 
 void bon_tts_set_key(const char *api_key, const char *voice) {
     if (!api_key || strlen(api_key) < 20 || strlen(api_key) >= sizeof(s_key)) {
-        ESP_LOGW(TAG, "no Google TTS key: replies stay as text (set it with >tts_key=...)");
+        ESP_LOGW(TAG, "no Google TTS key: replies stay as text (go >tts_key=AIza... vao Serial Monitor)");
         return;
     }
     strlcpy(s_key, api_key, sizeof(s_key));

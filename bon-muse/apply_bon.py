@@ -25,6 +25,57 @@ def insert(path, anchor, text, before=False):
     path.write_text(s)
 
 
+BON_CONSOLE = r"""#if CONFIG_MUSE_BON_ROBOT
+// Robot Bon: one typed line. Accepts tts_key / tts_voice with or without '>',
+// trims spaces and quotes, and always answers so the user knows it arrived.
+// Never prints the key itself.
+static void bon_console_line(char *line) {
+    while (*line == ' ' || *line == '\t') line++;
+    bool cmd = *line == '>';
+    if (cmd) line++;
+    while (*line == ' ' || *line == '\t') line++;
+    if (!*line) return;
+    bool key = strncmp(line, "tts_key", 7) == 0;
+    bool voice = strncmp(line, "tts_voice", 9) == 0;
+    if (key || voice) {
+        const char *v = line + (key ? 7 : 9);
+        while (*v == ' ' || *v == '=' || *v == ':' || *v == '"' || *v == '\'') v++;
+        char val[64];
+        size_t n = 0;
+        while (n < sizeof(val) - 1 && ((*v >= 'A' && *v <= 'Z') || (*v >= 'a' && *v <= 'z') ||
+                                       (*v >= '0' && *v <= '9') || *v == '-' || *v == '_')) {
+            val[n++] = *v++;
+        }
+        val[n] = '\0';
+        const char *name = key ? "tts_key" : "tts_voice";
+        if (key && (n != 39 || strncmp(val, "AIza", 4) != 0)) {
+            printf("\n@tts_key error: key phai bat dau bang AIza va dai 39 ky tu "
+                   "(Bon nhan duoc %u ky tu). Thu lai nhe.\n", (unsigned)n);
+        } else if (voice && n < 8) {
+            printf("\n@tts_voice error: vi du >tts_voice=vi-VN-Neural2-A\n");
+        } else if (!config_set_str(name, val)) {
+            printf("\n@%s error storage\n", name);
+        } else {
+            printf("\n@%s ok (%u ky tu). Bon khoi dong lai...\n", name, (unsigned)n);
+            fflush(stdout);
+            memset(val, 0, sizeof(val));
+            vTaskDelay(pdMS_TO_TICKS(800));
+            esp_restart();
+        }
+        memset(val, 0, sizeof(val));
+        fflush(stdout);
+        return;
+    }
+    if (cmd && sdk_token_console_command(line)) return;
+    printf("\n@bon nhan duoc 1 dong (%u ky tu) nhung khong phai lenh. "
+           "Go: >tts_key=AIza...\n", (unsigned)strlen(line));
+    fflush(stdout);
+}
+#endif
+
+"""
+
+
 def main():
     esp32 = pathlib.Path(sys.argv[1]).resolve()
     for src in (HERE / "files").rglob("*"):
@@ -175,25 +226,35 @@ def main():
            "#if CONFIG_MUSE_BON_ROBOT\n            bon_tts_feed();\n#endif\n",
            before=True)
     # Nap key qua cong serial:  >tts_key=AIza...   (tuy chon >tts_voice=vi-VN-Neural2-D)
+    # Doc dong de tinh: Enter kieu \r hay \n deu duoc, co hay khong co '>' deu duoc,
+    # bo khoang trang/dau nhay, va Bon luon bao lai (khong in lai key).
     con = main_dir / "sdk_token_console.c"
     insert(con, '#include "sdkconfig.h"\n',
            '#if CONFIG_MUSE_BON_ROBOT\n#include "config_store.h"\n#endif\n')
-    insert(con, "    if (strncmp(line, COMMAND, strlen(COMMAND)) != 0) return false;\n",
-           "#if CONFIG_MUSE_BON_ROBOT\n"
-           "    if (strncmp(line, \"tts_key=\", 8) == 0 || strncmp(line, \"tts_voice=\", 10) == 0) {\n"
-           "        bool key = line[4] == 'k';\n"
-           "        const char *v = strchr(line, '=') + 1;\n"
-           "        bool ok = config_set_str(key ? \"tts_key\" : \"tts_voice\", v);\n"
-           "        printf(\"@%s %s\\n\", key ? \"tts_key\" : \"tts_voice\", ok ? \"ok\" : \"error storage\");\n"
-           "        fflush(stdout);\n"
-           "        if (ok) {\n"
-           "            vTaskDelay(pdMS_TO_TICKS(500));\n"
-           "            esp_restart();\n"
-           "        }\n"
-           "        return true;\n"
-           "    }\n"
-           "#endif\n",
-           before=True)
+    insert(con, "// Collects bytes into a line and runs it on '\\n' if it starts with '>'.\n",
+           BON_CONSOLE, before=True)
+    old_feed = ("    if (c == '\\r') return;\n"
+                "    if (c != '\\n') {\n")
+    new_feed = ("#if CONFIG_MUSE_BON_ROBOT\n"
+                "    if (c == '\\r') c = '\\n';\n"
+                "#else\n"
+                "    if (c == '\\r') return;\n"
+                "#endif\n"
+                "    if (c != '\\n') {\n")
+    s = con.read_text()
+    if "if (c == '\\r') c = '\\n';" not in s:
+        if s.count(old_feed) != 1:
+            sys.exit("sdk_token_console.c: feed() changed")
+        s = s.replace(old_feed, new_feed)
+    old_run = "    if (!r->overflow && r->buf[0] == '>') sdk_token_console_command(r->buf + 1);\n"
+    new_run = ("#if CONFIG_MUSE_BON_ROBOT\n"
+               "    if (!r->overflow && r->len) bon_console_line(r->buf);\n"
+               "#else\n" + old_run + "#endif\n")
+    if "bon_console_line(r->buf)" not in s:
+        if s.count(old_run) != 1:
+            sys.exit("sdk_token_console.c: run line changed")
+        s = s.replace(old_run, new_run)
+    con.write_text(s)
     print("Bon added to", esp32)
 
 
