@@ -31,6 +31,9 @@ extern "C" {
 #include "config_store.h"
 #if CONFIG_HOMEHUB_VOICE
 #include "button.h"
+// voice_board_bon.c: biet anh con dang noi hay da im
+void bon_mic_vad_reset(void);
+bool bon_mic_vad(int *quiet_ms);
 #endif
 }
 #if CONFIG_HOMEHUB_VOICE
@@ -110,6 +113,11 @@ static const char *s_last_event = "none";
 static bool s_oled_ok;
 static int s_touch_count;
 static bool s_listening;            // chi task chinh dung
+static int64_t s_listen_start;      // luc bat dau nghe (ms)
+#define BON_LISTEN_HOLD_MS   1500   // giu tay lau hon -> tha tay la gui (kieu cu)
+#define BON_LISTEN_DONE_MS   1300   // noi xong, im lang bay lau -> tu gui
+#define BON_LISTEN_NOVOICE_MS 7000  // khong nghe tieng nao -> thoi nghe
+#define BON_LISTEN_MAX_MS   15000   // toi da 15 giay (gioi han cua SDK)
 static int64_t s_last_touch_ms;
 static SemaphoreHandle_t s_calibrate_done;
 
@@ -572,33 +580,54 @@ static void bon_task(void *) {
         }
 
         // 2. Cam bien cham: cham vao -> dung lai, cuoi
-        //    Co giong noi: giu tay tren dau = noi voi Muse, tha tay = gui
+        //    Co giong noi: cham 1 lan = Bon nghe; noi xong Bon tu gui khi anh im
+        //    (hoac cham lan nua). Giu tay roi tha cung duoc nhu cu.
         bool touch = gpio_get_level(BON_TOUCH_GPIO) == 1;
+        auto stop_listening = [&](const char *why) {
+#if CONFIG_HOMEHUB_VOICE
+            button_inject_press(false);
+#endif
+            ESP_LOGI(TAG, "stop listening: %s", why);
+            s_listening = false;
+            face = FACE_CONFUSED;          // dang nghi...
+            face_until = now + 8000;
+            dirty = true;
+        };
         if (touch && !touch_prev) {
             if (active) finish(nullptr, FACE_NEUTRAL);
-            bool listening = false;
+            if (s_listening) {
+                stop_listening("second tap");
+            } else {
+                bool listening = false;
 #if CONFIG_HOMEHUB_VOICE
-            listening = button_inject_press(true);
+                bon_mic_vad_reset();
+                listening = button_inject_press(true);
 #endif
-            face = listening ? FACE_SURPRISED : FACE_HAPPY;   // mat tron = dang nghe
-            face_until = listening ? 0 : now + 2500;
-            text_until = 0;
-            dirty = true;
-            s_listening = listening;
+                face = listening ? FACE_SURPRISED : FACE_HAPPY;   // mat tron = dang nghe
+                face_until = listening ? 0 : now + 2500;
+                text_until = 0;
+                dirty = true;
+                s_listening = listening;
+                s_listen_start = now;
+            }
             xSemaphoreTake(s_mutex, portMAX_DELAY);
             s_touch_count++;
             s_last_touch_ms = now;
             s_moving = false;
             xSemaphoreGive(s_mutex);
-        } else if (!touch && touch_prev && s_listening) {
-#if CONFIG_HOMEHUB_VOICE
-            button_inject_press(false);
-#endif
-            s_listening = false;
-            face = FACE_CONFUSED;          // dang nghi...
-            face_until = now + 8000;
-            dirty = true;
+        } else if (!touch && touch_prev && s_listening &&
+                   now - s_listen_start >= BON_LISTEN_HOLD_MS) {
+            stop_listening("released after hold");
         }
+#if CONFIG_HOMEHUB_VOICE
+        if (s_listening && !touch && now - s_listen_start > 600) {
+            int quiet = 0;
+            bool heard = bon_mic_vad(&quiet);
+            if (heard && quiet >= BON_LISTEN_DONE_MS) stop_listening("done talking");
+            else if (!heard && now - s_listen_start >= BON_LISTEN_NOVOICE_MS) stop_listening("no voice heard");
+            else if (now - s_listen_start >= BON_LISTEN_MAX_MS) stop_listening("time limit");
+        }
+#endif
         touch_prev = touch;
 
         // 3. Do ToF; khi dang chay thi kiem tra mep ban / vat can

@@ -3,7 +3,10 @@
 // master for both. No codec: volume is applied in software.
 #include "voice_board.h"
 
+#include <math.h>
 #include <stdatomic.h>
+
+#include "esp_timer.h"
 
 #include "driver/i2s_std.h"
 #include "esp_log.h"
@@ -31,6 +34,30 @@ static bool s_mic_on;
 static bool s_ready;
 static atomic_int s_gain = 60;         // 0..100
 
+// Loc mic: bo DC + tieng u u tan so thap, giam on nen giua cac cau noi,
+// va do xem co tieng noi khong (de Bon tu dung nghe khi anh noi xong).
+static float s_hp_x, s_hp_y;           // bo loc thong cao ~100 Hz
+static float s_floor = 300.0f;         // muc on nen (tu hoc)
+static float s_gate = 1.0f;            // he so giam on hien tai
+static atomic_int s_last_voice_ms;     // lan cuoi nghe tieng noi (ms)
+static atomic_bool s_heard;            // da nghe tieng noi tu luc reset
+static int s_peak_max, s_clips;
+#define BON_HP_A      0.96f            // exp(-2*pi*100/16000)
+#define BON_VOICE_MIN 700.0f           // nguong toi thieu de coi la tieng noi
+#define BON_GATE_LOW  0.3f             // giu 30% am luong khi chi co on nen
+
+static int now_ms32(void) { return (int)(esp_timer_get_time() / 1000); }
+
+void bon_mic_vad_reset(void) {
+    atomic_store(&s_heard, false);
+    atomic_store(&s_last_voice_ms, now_ms32());
+}
+
+bool bon_mic_vad(int *quiet_ms) {
+    *quiet_ms = now_ms32() - atomic_load(&s_last_voice_ms);
+    return atomic_load(&s_heard);
+}
+
 void voice_board_amp(bool on) { (void)on; }
 
 void voice_board_set_volume(int percent) {
@@ -46,6 +73,10 @@ int voice_board_dial_steps(void) { return 0; }
 esp_err_t voice_board_mic_start(void) {
     if (!s_ready) return ESP_ERR_INVALID_STATE;
     if (s_mic_on) return ESP_OK;
+    s_hp_x = s_hp_y = 0;
+    s_gate = 1.0f;
+    s_peak_max = s_clips = 0;
+    bon_mic_vad_reset();
     esp_err_t err = i2s_channel_enable(s_rx);
     if (err == ESP_OK) s_mic_on = true;
     return err;
@@ -55,6 +86,8 @@ void voice_board_mic_stop(void) {
     if (!s_mic_on) return;
     i2s_channel_disable(s_rx);
     s_mic_on = false;
+    ESP_LOGI(TAG, "mic: noise floor %d, loudest %d, clipped %d samples",
+             (int)s_floor, s_peak_max, s_clips);
 }
 
 size_t voice_board_mic_read(int16_t *pcm, size_t frames, int *peak) {
@@ -66,15 +99,42 @@ size_t voice_board_mic_read(int16_t *pcm, size_t frames, int *peak) {
         return 0;
     }
     size_t count = bytes / (2 * sizeof(int32_t));
+    // 1) Doi sang so thuc + loc thong cao, do muc am cua ca doan (~20 ms)
+    static float buf[MIC_CHUNK];          // static: task giong noi co stack nho
+    double energy = 0;
     for (size_t i = 0; i < count; i++) {
         // INMP441 o kenh trai (L/R noi GND), 24 bit nam o phan cao cua 32 bit
-        int32_t v = s_raw[2 * i] >> 12;
-        if (v > 32767) v = 32767;
-        if (v < -32768) v = -32768;
+        float x = (float)(s_raw[2 * i] >> 12);
+        float y = x - s_hp_x + BON_HP_A * s_hp_y;
+        s_hp_x = x;
+        s_hp_y = y;
+        buf[i] = y;
+        energy += (double)y * y;
+    }
+    float rms = count ? sqrtf((float)(energy / count)) : 0;
+    // 2) Hoc muc on nen: giam nhanh, tang rat cham
+    if (rms < s_floor) s_floor += (rms - s_floor) * 0.2f;
+    else s_floor += (rms - s_floor) * 0.003f;
+    if (s_floor < 50) s_floor = 50;
+    float thresh = s_floor * 2.5f;
+    if (thresh < BON_VOICE_MIN) thresh = BON_VOICE_MIN;
+    bool voice = rms > thresh;
+    if (voice) {
+        atomic_store(&s_last_voice_ms, now_ms32());
+        atomic_store(&s_heard, true);
+    }
+    // 3) Giam on giua cac cau (mo nhanh khi co tieng, dong tu tu)
+    float target = voice || rms > s_floor * 1.6f ? 1.0f : BON_GATE_LOW;
+    for (size_t i = 0; i < count; i++) {
+        s_gate += (target - s_gate) * (target > s_gate ? 0.05f : 0.002f);
+        float v = buf[i] * s_gate;
+        if (v > 32767) { v = 32767; s_clips++; }
+        if (v < -32768) { v = -32768; s_clips++; }
         pcm[i] = (int16_t)v;
-        int mag = v < 0 ? -v : v;
+        int mag = v < 0 ? (int)-v : (int)v;
         if (mag > *peak) *peak = mag;
     }
+    if (*peak > s_peak_max) s_peak_max = *peak;
     return count;
 }
 
